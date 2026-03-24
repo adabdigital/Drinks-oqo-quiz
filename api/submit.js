@@ -143,7 +143,11 @@ async function getResultProfile(primary, secondary) {
   return profiles.find(p => p.primary_score === primary && (p.secondary_score === secondary || secondary === "NONE"));
 }
 
-app.post("/submit", async (req, res) => {
+module.exports = async function handler(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
   const { answers, name, email } = req.body;
   try {
     const scores = { BUILD: 0, SUSTAIN: 0, REPLENISH: 0, RESTORE: 0 };
@@ -166,6 +170,4 @@ app.post("/submit", async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
-
-app.listen(3000, () => console.log(`🚀 Server live on http://localhost:3000`));
+};
