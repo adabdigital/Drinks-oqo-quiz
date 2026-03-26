@@ -123,7 +123,7 @@ async function getResultProfile(primaryTarget, secondaryTarget) {
               handle: fe.node.handle,
               title: fe.node.title,
               image: fe.node.featuredImage?.url,
-              price: parseFloat(fe.node.priceRange.minVariantPrice.amount) * 100,
+              price: parseFloat(fe.node.priceRange.minVariantPrice.amount),
               variantId: fe.node.variants.edges[0]?.node.id.split('/').pop(),
               flavor_label: fe.node.f_label?.value || fe.node.title
             })) || []
