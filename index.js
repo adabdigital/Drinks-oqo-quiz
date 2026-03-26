@@ -116,7 +116,7 @@ async function getResultProfile(primaryTarget, secondaryTarget) {
             title: p.title,
             description: p.descriptionHtml,
             image: p.featuredImage?.url,
-            price: parseFloat(p.priceRange.minVariantPrice.amount) * 100, // Format to cents for frontend
+            price: parseFloat(p.priceRange.minVariantPrice.amount), // Format to cents for frontend
             variantId: p.variants.edges[0]?.node.id.split('/').pop(),
             flavor_label: p.f_label?.value || "Original",
             flavors: p.f_list?.references?.edges.map(fe => ({
