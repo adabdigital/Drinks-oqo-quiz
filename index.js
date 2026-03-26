@@ -22,7 +22,6 @@ async function shopifyQuery(query, variables = {}) {
   return await res.json();
 }
 
-// --- SAVE ATTEMPT TO SHOPIFY ---
 async function saveQuizAttempt(primary, secondary, scores, profileId, userData) {
   const mutation = `
     mutation metaobjectCreate($metaobject: MetaobjectCreateInput!) {
@@ -54,22 +53,19 @@ async function saveQuizAttempt(primary, secondary, scores, profileId, userData) 
   const result = await shopifyQuery(mutation, variables);
   if (result.data?.metaobjectCreate?.userErrors?.length > 0) {
     console.error("❌ SHOPIFY SAVE ERROR:", JSON.stringify(result.data.metaobjectCreate.userErrors, null, 2));
-  } else {
-    console.log("✅ SUCCESS: Quiz attempt saved to Shopify.");
   }
 }
 
-// --- FETCH MATCHING PROFILE ---
-async function getResultProfile(primary, secondary) {
+async function getResultProfile(primaryTarget, secondaryTarget) {
   const query = `{
-    metaobjects(type: "quiz_result_profile", first: 10) {
+    metaobjects(type: "quiz_result_profile", first: 50) {
       edges {
         node {
           id
           fields {
             key
             value
-            references(first: 3) {
+            references(first: 5) {
               edges {
                 node {
                   ... on Product {
@@ -81,7 +77,7 @@ async function getResultProfile(primary, secondary) {
                     variants(first: 1) { edges { node { id } } }
                     f_label: metafield(namespace: "custom", key: "flavor_label") { value }
                     f_list: metafield(namespace: "custom", key: "flavor_list") { 
-                      references(first: 3) {
+                      references(first: 5) {
                         edges {
                           node {
                             ... on Product {
@@ -120,14 +116,14 @@ async function getResultProfile(primary, secondary) {
             title: p.title,
             description: p.descriptionHtml,
             image: p.featuredImage?.url,
-            price: parseFloat(p.priceRange.minVariantPrice.amount), 
+            price: parseFloat(p.priceRange.minVariantPrice.amount) * 100, // Format to cents for frontend
             variantId: p.variants.edges[0]?.node.id.split('/').pop(),
             flavor_label: p.f_label?.value || "Original",
             flavors: p.f_list?.references?.edges.map(fe => ({
               handle: fe.node.handle,
               title: fe.node.title,
               image: fe.node.featuredImage?.url,
-              price: parseFloat(fe.node.priceRange.minVariantPrice.amount),
+              price: parseFloat(fe.node.priceRange.minVariantPrice.amount) * 100,
               variantId: fe.node.variants.edges[0]?.node.id.split('/').pop(),
               flavor_label: fe.node.f_label?.value || fe.node.title
             })) || []
@@ -140,10 +136,34 @@ async function getResultProfile(primary, secondary) {
     return obj;
   });
 
-  return profiles.find(p => p.primary_score === primary && (p.secondary_score === secondary || secondary === "NONE"));
+  const pKey = primaryTarget.toUpperCase();
+  const sKey = secondaryTarget.toUpperCase();
+
+  // --- HIERARCHICAL MATCHING LOGIC ---
+  
+  // 1. Try Perfect Match (Primary + Secondary)
+  let match = profiles.find(p => 
+    p.primary_score?.toUpperCase() === pKey && 
+    p.secondary_score?.toUpperCase() === sKey
+  );
+
+  // 2. Try Primary + "NONE" Fallback
+  if (!match) {
+    match = profiles.find(p => 
+      p.primary_score?.toUpperCase() === pKey && 
+      (p.secondary_score?.toUpperCase() === "NONE" || !p.secondary_score)
+    );
+  }
+
+  // 3. Try any profile that matches the Primary score
+  if (!match) {
+    match = profiles.find(p => p.primary_score?.toUpperCase() === pKey);
+  }
+
+  // 4. Final Safety: Return the first profile in the list if nothing matches
+  return match || profiles[0];
 }
 
-// Handle POST to root (for current frontend) and /submit (for future use)
 app.post(["/", "/submit"], async (req, res) => {
   const { answers, name, email } = req.body;
   try {
@@ -156,15 +176,18 @@ app.post(["/", "/submit"], async (req, res) => {
     });
 
     const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
-    const profile = await getResultProfile(sorted[0][0], sorted[1][0]);
+    const primary = sorted[0][0];
+    const secondary = sorted[1][0];
+
+    const profile = await getResultProfile(primary, secondary);
 
     if (profile && profile.id) {
-      // Save data asynchronously
-      saveQuizAttempt(sorted[0][0], sorted[1][0], scores, profile.id, { name, email, answers });
+      saveQuizAttempt(primary, secondary, scores, profile.id, { name, email, answers });
     }
 
     res.json({ result: profile });
   } catch (err) {
+    console.error("Server Error:", err);
     res.status(500).json({ error: err.message });
   }
 });
